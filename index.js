@@ -12,19 +12,16 @@ const client = new Client({
     ]
 });
 
-// Cloud MongoDB Connection
 mongoose.connect(process.env.MONGO_URI)
     .then(() => console.log('Successfully connected to MongoDB Atlas!'))
     .catch(err => console.error('Database connection error:', err));
 
-// Database Schemas
 const LevelModel = mongoose.model('Level', new mongoose.Schema({ userId: String, guildId: String, xp: Number, level: Number }));
 const InviteModel = mongoose.model('Invite', new mongoose.Schema({ guildId: String, code: String, inviterId: String, uses: Number }));
 
 const BANNED_WORDS = ['bhenchod', 'madarchod', 'chutiya', 'gandu'];
 const guildInvites = new Map();
 
-// Register Slash Commands
 const commands = [
     new SlashCommandBuilder().setName('help').setDescription('View professional bot commands'),
     new SlashCommandBuilder().setName('rank').setDescription('Check your server level'),
@@ -52,7 +49,6 @@ client.once('ready', async () => {
     });
 });
 
-// Welcomer & Invite Tracker
 client.on('guildMemberAdd', async member => {
     const channel = member.guild.channels.cache.find(ch => ch.name === 'welcome' || ch.name === 'general');
     try {
@@ -73,7 +69,6 @@ client.on('guildMemberAdd', async member => {
     } catch (e) {}
 });
 
-// AutoMod & Leveling
 client.on('messageCreate', async message => {
     if (message.author.bot || !message.guild) return;
 
@@ -102,7 +97,6 @@ client.on('messageCreate', async message => {
     await userData.save();
 });
 
-// Commands & Ticket Buttons Interaction Handler
 client.on('interactionCreate', async interaction => {
     if (interaction.isChatInputCommand()) {
         const { commandName, guildId, user } = interaction;
@@ -169,7 +163,6 @@ client.on('interactionCreate', async interaction => {
         }
     }
 
-    // Button Ticket Logic
     if (interaction.isButton() && interaction.customId === 'open_ticket') {
         await interaction.deferReply({ ephemeral: true });
         const ticketChannel = await interaction.guild.channels.create({
@@ -181,3 +174,7 @@ client.on('interactionCreate', async interaction => {
             ]
         });
         const closeRow = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('close_ticket').setLabel('🔒 Close').setStyle(ButtonStyle.Danger));
+        await ticketChannel.send({ content: `Welcome ${interaction.user}, staff will assist you shortly.`, components: [closeRow] });
+        return interaction.editReply({ content: `Ticket created: ${ticketChannel}` });
+    }
+
