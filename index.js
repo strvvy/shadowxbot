@@ -1,5 +1,4 @@
-const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-const { DisTube } = require('distube');
+const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
 const fs = require('fs');
 const express = require('express');
 
@@ -8,20 +7,11 @@ const client = new Client({
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
-        GatewayIntentBits.GuildMembers,
-        GatewayIntentBits.GuildVoiceStates
+        GatewayIntentBits.GuildMembers
     ]
 });
 
 const PREFIX = '!';
-
-// Correctly setup DisTube with zero plugins to avoid startup compilation crashes on Render
-client.distube = new DisTube(client, {
-    leaveOnStop: false,
-    emitNewSongOnly: true,
-    emitAddSongWhenCreatingQueue: false,
-    emitAddListWhenCreatingQueue: false
-});
 
 // Levels Database Setup
 let levels = {};
@@ -30,10 +20,10 @@ if (fs.existsSync('levels.json')) {
 }
 function saveLevels() { fs.writeFileSync('levels.json', JSON.stringify(levels, null, 2)); }
 
-const BANNED_WORDS = ['gaali1', 'gaali2', 'bhenchod', 'madarchod', 'chutiya']; 
+const BANNED_WORDS = ['gaali1', 'gaali2', 'bhenchod', 'madarchod', 'chutiya', 'gandu']; 
 
 client.once('ready', () => {
-    console.log(`${client.user.tag} is online with Fixed GUI Music!`);
+    console.log(`${client.user.tag} is online with Auto-Mod, Levels, and Fun (No Music)`);
 });
 
 // Welcome System
@@ -43,84 +33,26 @@ client.on('guildMemberAdd', member => {
     channel.send(`Welcome to the server, ${member}! 🎉`);
 });
 
-// GUI Music Playback Event
-client.distube.on('playSong', (queue, song) => {
-    const embed = new EmbedBuilder()
-        .setTitle(`🎶 Now Playing: ${song.name}`)
-        .setURL(song.url)
-        .setDescription(`**Duration:** ${song.formattedDuration}\n**Requested By:** ${song.user}`)
-        .setThumbnail(song.thumbnail || null)
-        .setColor('#ff00aa');
-
-    const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('pause_resume').setLabel('⏸️ Pause/Resume').setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId('skip').setLabel('⏭️ Skip').setStyle(ButtonStyle.Success),
-        new ButtonBuilder().setCustomId('loop').setLabel('🔁 Loop').setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId('stop').setLabel('⏹️ Stop').setStyle(ButtonStyle.Danger)
-    );
-
-    queue.textChannel.send({ embeds: [embed], components: [row] });
-});
-
-// Fallback message for error safety
-client.distube.on('error', (channel, e) => {
-    if (channel) channel.send(`❌ Music Error: ${e.message.slice(0, 100)}`);
-    console.error(e);
-});
-
-// Handle GUI Button Clicks
-client.on('interactionCreate', async interaction => {
-    if (!interaction.isButton()) return;
-    const queue = client.distube.getQueue(interaction.guildId);
-    if (!queue) return interaction.reply({ content: '❌ No active music queue!', ephemeral: true });
-
-    await interaction.deferUpdate();
-
-    if (interaction.customId === 'pause_resume') {
-        if (queue.paused) {
-            queue.resume();
-            interaction.channel.send('▶️ Music Resumed!');
-        } else {
-            queue.pause();
-            interaction.channel.send('⏸️ Music Paused!');
-        }
-    } else if (interaction.customId === 'skip') {
-        try {
-            await queue.skip();
-            interaction.channel.send('⏭️ Song Skipped!');
-        } catch {
-            interaction.channel.send('❌ No next song in queue!');
-        }
-    } else if (interaction.customId === 'loop') {
-        const mode = queue.repeatMode === 1 ? 0 : 1;
-        queue.setRepeatMode(mode);
-        interaction.channel.send(mode === 1 ? '🔁 Loop Activated!' : '➡️ Loop Deactivated!');
-    } else if (interaction.customId === 'stop') {
-        queue.stop();
-        interaction.channel.send('⏹️ Music Stopped!');
-    }
-});
-
-// Command & AutoMod Processing
+// Message Event (AutoMod, Leveling, Commands)
 client.on('messageCreate', async message => {
     if (message.author.bot) return;
 
-    // AutoMod
+    // 1. 🛡️ AUTO-MOD
     if (!message.member.permissions.has('ManageMessages')) {
         if (/(https?:\/\/[^\s]+)/g.test(message.content) || /(discord\.gg\/[^\s]+)/g.test(message.content)) {
             await message.delete();
-            return message.channel.send(`${message.author}, links not allowed! ❌`).then(m => setTimeout(() => m.delete(), 3000));
+            return message.channel.send(`${message.author}, links are not allowed here! ❌`).then(m => setTimeout(() => m.delete(), 3000));
         }
         if (BANNED_WORDS.some(w => message.content.toLowerCase().includes(w))) {
             await message.delete();
-            return message.channel.send(`${message.author}, don't use bad words! 🚫`).then(m => setTimeout(() => m.delete(), 3000));
+            return message.channel.send(`${message.author}, please do not use bad words! 🚫`).then(m => setTimeout(() => m.delete(), 3000));
         }
     }
 
-    // Leveling
+    // 2. 📈 LEVELING
     const userId = message.author.id;
     if (!levels[userId]) levels[userId] = { xp: 0, level: 1 };
-    levels[userId].xp += 10;
+    levels[userId].xp += Math.floor(Math.random() * 11) + 5;
     if (levels[userId].xp >= levels[userId].level * 100) {
         levels[userId].level += 1;
         levels[userId].xp = 0;
@@ -128,54 +60,31 @@ client.on('messageCreate', async message => {
     }
     saveLevels();
 
+    // Command Checker
     if (!message.content.startsWith(PREFIX)) return;
     const args = message.content.slice(PREFIX.length).trim().split(/ +/);
     const command = args.shift().toLowerCase();
 
-    // Help Command
+    // Help
     if (command === 'help') {
         const helpEmbed = new EmbedBuilder()
-            .setTitle('ShadowxBot Premium Menu')
-            .setColor('#ff00aa')
+            .setTitle('ShadowxBot Menu')
+            .setColor('#00ffcc')
             .addFields(
-                { name: '🎵 Music', value: '`!play [song info]` - Stream audio\n`!loop` - Toggle loop mode' },
-                { name: '📊 Account', value: '`!rank` - View server level' },
-                { name: '🛡️ Server Staff', value: '`!clear [number]`, `!kick`, `!ban`' },
-                { name: '🎮 Gaming/Fun', value: '`!meme`, `!roll`, `!8ball`' }
+                { name: '📈 Leveling', value: '`!rank` - Check your active server level' },
+                { name: '🛡️ Auto-Mod', value: 'Deletes curse words and outside links automatically.' },
+                { name: '🎮 Fun & Games', value: '`!meme` - Random meme\n`!8ball [ask]` - Ask the 8ball\n`!roll` - Roll a dice' },
+                { name: '⚙️ Moderation', value: '`!clear [number]`, `!kick @user`, `!ban @user`' }
             );
         return message.channel.send({ embeds: [helpEmbed] });
     }
 
-    // Play Command
-    if (command === 'play') {
-        const voiceChannel = message.member.voice.channel;
-        if (!voiceChannel) return message.reply('❌ Join a voice channel first!');
-        const query = args.join(' ');
-        if (!query) return message.reply('❌ Enter a song title or link!');
-
-        try {
-            await client.distube.play(voiceChannel, query, {
-                textChannel: message.channel,
-                member: message.member,
-                message
-            });
-        } catch (err) {
-            message.reply('❌ Connection error or stream restricted by provider!');
-        }
-    }
-
-    if (command === 'loop') {
-        const queue = client.distube.getQueue(message.guildId);
-        if (!queue) return message.reply('❌ No track playing!');
-        const mode = queue.repeatMode === 1 ? 0 : 1;
-        queue.setRepeatMode(mode);
-        return message.reply(mode === 1 ? '🔁 Loop enabled!' : '➡️ Loop disabled!');
-    }
-
-    // Utility & Fun
+    // Rank
     if (command === 'rank') return message.reply(`📊 Level: ${levels[userId].level} | XP: ${levels[userId].xp}/${levels[userId].level * 100}`);
-    if (command === 'roll') return message.reply(`🎲 Rolled: **${Math.floor(Math.random() * 6) + 1}**`);
-    if (command === '8ball') return message.reply(`🎱 Answer: ${['Yes', 'No', 'Maybe'].sort(() => 0.5 - Math.random())[0]}`);
+
+    // Fun
+    if (command === 'roll') return message.reply(`🎲 You rolled a **${Math.floor(Math.random() * 6) + 1}**!`);
+    if (command === '8ball') return message.reply(`🎱 8Ball Says: ${['Yes!', 'No.', 'Maybe.', 'Never.'].sort(() => 0.5 - Math.random())[0]}`);
     if (command === 'meme') {
         try {
             const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
@@ -183,19 +92,21 @@ client.on('messageCreate', async message => {
             const data = await res.json();
             const embed = new EmbedBuilder().setTitle(data.title).setImage(data.url).setColor('#ffcc00');
             return message.channel.send({ embeds: [embed] });
-        } catch { return message.reply('API timed out, try again.'); }
+        } catch { return message.reply('Meme service busy, try again!'); }
     }
+
+    // Mod Commands
     if (command === 'clear') {
         if (!message.member.permissions.has('ManageMessages')) return;
-        const amount = parseInt(args);
-        if (isNaN(amount) || amount < 1 || amount > 100) return message.reply('Enter 1-100');
+        const amount = parseInt(args[0]);
+        if (isNaN(amount) || amount < 1 || amount > 100) return message.reply('Enter between 1-100');
         await message.channel.bulkDelete(amount + 1, true);
     }
 });
 
-// Render Deployment Target Port
+// Express Server
 const app = express();
-app.get('/', (req, res) => res.send('Bot System Active'));
+app.get('/', (req, res) => res.send('Bot System Online'));
 app.listen(process.env.PORT || 3000);
 
 client.login(process.env.TOKEN);
