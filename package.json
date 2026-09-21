@@ -1,7 +1,7 @@
 {
   "name": "shadowxbot",
   "version": "1.0.0",
-  "description": "All in one discord bot without music crashes",
+  "description": "Professional Discord Bot with Slash Commands",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
