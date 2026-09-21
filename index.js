@@ -12,6 +12,7 @@ const client = new Client({
     ]
 });
 
+// MongoDB Connection
 mongoose.connect(process.env.MONGO_URI)
     .then(() => console.log('Successfully connected to MongoDB Atlas!'))
     .catch(err => console.error('Database connection error:', err));
@@ -177,4 +178,3 @@ client.on('interactionCreate', async interaction => {
         await ticketChannel.send({ content: `Welcome ${interaction.user}, staff will assist you shortly.`, components: [closeRow] });
         return interaction.editReply({ content: `Ticket created: ${ticketChannel}` });
     }
-
