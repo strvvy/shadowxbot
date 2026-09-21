@@ -15,7 +15,7 @@ const client = new Client({
 
 const PREFIX = '!';
 
-// DisTube Music Client Setup
+// Correctly setup DisTube with zero plugins to avoid startup compilation crashes on Render
 client.distube = new DisTube(client, {
     leaveOnStop: false,
     emitNewSongOnly: true,
@@ -33,7 +33,7 @@ function saveLevels() { fs.writeFileSync('levels.json', JSON.stringify(levels, n
 const BANNED_WORDS = ['gaali1', 'gaali2', 'bhenchod', 'madarchod', 'chutiya']; 
 
 client.once('ready', () => {
-    console.log(`${client.user.tag} is online with GUI Music like Luna!`);
+    console.log(`${client.user.tag} is online with Fixed GUI Music!`);
 });
 
 // Welcome System
@@ -43,13 +43,13 @@ client.on('guildMemberAdd', member => {
     channel.send(`Welcome to the server, ${member}! 🎉`);
 });
 
-// GUI Music Event (Creates buttons when a song starts)
+// GUI Music Playback Event
 client.distube.on('playSong', (queue, song) => {
     const embed = new EmbedBuilder()
         .setTitle(`🎶 Now Playing: ${song.name}`)
         .setURL(song.url)
         .setDescription(`**Duration:** ${song.formattedDuration}\n**Requested By:** ${song.user}`)
-        .setThumbnail(song.thumbnail)
+        .setThumbnail(song.thumbnail || null)
         .setColor('#ff00aa');
 
     const row = new ActionRowBuilder().addComponents(
@@ -62,11 +62,17 @@ client.distube.on('playSong', (queue, song) => {
     queue.textChannel.send({ embeds: [embed], components: [row] });
 });
 
+// Fallback message for error safety
+client.distube.on('error', (channel, e) => {
+    if (channel) channel.send(`❌ Music Error: ${e.message.slice(0, 100)}`);
+    console.error(e);
+});
+
 // Handle GUI Button Clicks
 client.on('interactionCreate', async interaction => {
     if (!interaction.isButton()) return;
     const queue = client.distube.getQueue(interaction.guildId);
-    if (!queue) return interaction.reply({ content: '❌ No music playing right now!', ephemeral: true });
+    if (!queue) return interaction.reply({ content: '❌ No active music queue!', ephemeral: true });
 
     await interaction.deferUpdate();
 
@@ -86,20 +92,20 @@ client.on('interactionCreate', async interaction => {
             interaction.channel.send('❌ No next song in queue!');
         }
     } else if (interaction.customId === 'loop') {
-        const mode = queue.repeatMode === 1 ? 0 : 1; // Toggle repeat current song
+        const mode = queue.repeatMode === 1 ? 0 : 1;
         queue.setRepeatMode(mode);
-        interaction.channel.send(mode === 1 ? '🔁 Loop Activated for current song!' : '➡️ Loop Deactivated!');
+        interaction.channel.send(mode === 1 ? '🔁 Loop Activated!' : '➡️ Loop Deactivated!');
     } else if (interaction.customId === 'stop') {
         queue.stop();
-        interaction.channel.send('⏹️ Music Stopped and cleared!');
+        interaction.channel.send('⏹️ Music Stopped!');
     }
 });
 
-// Main Message Handling (Commands + AutoMod + Levels)
+// Command & AutoMod Processing
 client.on('messageCreate', async message => {
     if (message.author.bot) return;
 
-    // Auto-Mod
+    // AutoMod
     if (!message.member.permissions.has('ManageMessages')) {
         if (/(https?:\/\/[^\s]+)/g.test(message.content) || /(discord\.gg\/[^\s]+)/g.test(message.content)) {
             await message.delete();
@@ -114,7 +120,7 @@ client.on('messageCreate', async message => {
     // Leveling
     const userId = message.author.id;
     if (!levels[userId]) levels[userId] = { xp: 0, level: 1 };
-    levels[userId].xp += Math.floor(Math.random() * 11) + 5;
+    levels[userId].xp += 10;
     if (levels[userId].xp >= levels[userId].level * 100) {
         levels[userId].level += 1;
         levels[userId].xp = 0;
@@ -122,31 +128,30 @@ client.on('messageCreate', async message => {
     }
     saveLevels();
 
-    // Command Parser
     if (!message.content.startsWith(PREFIX)) return;
     const args = message.content.slice(PREFIX.length).trim().split(/ +/);
     const command = args.shift().toLowerCase();
 
-    // Help
+    // Help Command
     if (command === 'help') {
         const helpEmbed = new EmbedBuilder()
             .setTitle('ShadowxBot Premium Menu')
             .setColor('#ff00aa')
             .addFields(
-                { name: '🎵 GUI Music', value: '`!play [song name/link]` - Play music with control buttons\n`!loop` - Loop current song manually' },
-                { name: '📊 Stats', value: '`!rank` - Check level' },
-                { name: '🛡️ Moderation', value: '`!clear [1-100]`, `!kick`, `!ban` (AutoMod is active)' },
-                { name: '🎮 Fun', value: '`!meme`, `!roll`, `!8ball`' }
+                { name: '🎵 Music', value: '`!play [song info]` - Stream audio\n`!loop` - Toggle loop mode' },
+                { name: '📊 Account', value: '`!rank` - View server level' },
+                { name: '🛡️ Server Staff', value: '`!clear [number]`, `!kick`, `!ban`' },
+                { name: '🎮 Gaming/Fun', value: '`!meme`, `!roll`, `!8ball`' }
             );
         return message.channel.send({ embeds: [helpEmbed] });
     }
 
-    // Music Commands
+    // Play Command
     if (command === 'play') {
         const voiceChannel = message.member.voice.channel;
-        if (!voiceChannel) return message.reply('❌ You need to join a voice channel first!');
+        if (!voiceChannel) return message.reply('❌ Join a voice channel first!');
         const query = args.join(' ');
-        if (!query) return message.reply('❌ Please provide a song name or link!');
+        if (!query) return message.reply('❌ Enter a song title or link!');
 
         try {
             await client.distube.play(voiceChannel, query, {
@@ -155,23 +160,22 @@ client.on('messageCreate', async message => {
                 message
             });
         } catch (err) {
-            console.error(err);
-            message.reply('❌ Error playing the song. Make sure I have permission to join your voice channel!');
+            message.reply('❌ Connection error or stream restricted by provider!');
         }
     }
 
     if (command === 'loop') {
         const queue = client.distube.getQueue(message.guildId);
-        if (!queue) return message.reply('❌ No music playing!');
+        if (!queue) return message.reply('❌ No track playing!');
         const mode = queue.repeatMode === 1 ? 0 : 1;
         queue.setRepeatMode(mode);
-        return message.reply(mode === 1 ? '🔁 Loop ON!' : '➡️ Loop OFF!');
+        return message.reply(mode === 1 ? '🔁 Loop enabled!' : '➡️ Loop disabled!');
     }
 
-    // Rank & Fun
+    // Utility & Fun
     if (command === 'rank') return message.reply(`📊 Level: ${levels[userId].level} | XP: ${levels[userId].xp}/${levels[userId].level * 100}`);
-    if (command === 'roll') return message.reply(`🎲 Rolled a **${Math.floor(Math.random() * 6) + 1}**!`);
-    if (command === '8ball') return message.reply(`🎱 ${['Yes!', 'No.', 'Ask again.', 'Never.'].sort(() => 0.5 - Math.random())[0]}`);
+    if (command === 'roll') return message.reply(`🎲 Rolled: **${Math.floor(Math.random() * 6) + 1}**`);
+    if (command === '8ball') return message.reply(`🎱 Answer: ${['Yes', 'No', 'Maybe'].sort(() => 0.5 - Math.random())[0]}`);
     if (command === 'meme') {
         try {
             const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
@@ -179,19 +183,19 @@ client.on('messageCreate', async message => {
             const data = await res.json();
             const embed = new EmbedBuilder().setTitle(data.title).setImage(data.url).setColor('#ffcc00');
             return message.channel.send({ embeds: [embed] });
-        } catch { return message.reply('Meme api error!'); }
+        } catch { return message.reply('API timed out, try again.'); }
     }
     if (command === 'clear') {
         if (!message.member.permissions.has('ManageMessages')) return;
-        const amount = parseInt(args[0]);
+        const amount = parseInt(args);
         if (isNaN(amount) || amount < 1 || amount > 100) return message.reply('Enter 1-100');
         await message.channel.bulkDelete(amount + 1, true);
     }
 });
 
-// Render Keep-Alive
+// Render Deployment Target Port
 const app = express();
-app.get('/', (req, res) => res.send('Bot Online!'));
+app.get('/', (req, res) => res.send('Bot System Active'));
 app.listen(process.env.PORT || 3000);
 
 client.login(process.env.TOKEN);
